@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>iPhone Security Sweep</title>
+<style>
+  :root {
+    --bg: #000;
+    --fg: #0f0;
+    --warn: #ff3131;
+    --muted: #0a0a0a;
+    --accent: #39ff14;
+    --panel: #050505;
+  }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--fg); font:14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; height:100%; }
+  .safe-area { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  .wrap { min-height:100dvh; display:flex; flex-direction:column; }
+  .statusbar { display:flex; gap:8px; align-items:center; padding:10px 14px; background:linear-gradient(180deg,#060606,#030303); border-bottom:1px solid #111; position:sticky; top:0; z-index:5; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--warn); box-shadow:0 0 14px var(--warn); animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%{opacity:.6} 50%{opacity:1} 100%{opacity:.6} }
+  .title { font-weight:700; letter-spacing:.08em; color:#fff; }
+  .grid { display:grid; grid-template-columns:1fr; gap:10px; padding:12px; }
+  .card { background:var(--panel); border:1px solid #0e0e0e; border-radius:12px; overflow:hidden; }
+  .card h3 { margin:0; padding:10px 12px; background:#0b0b0b; border-bottom:1px solid #121212; font-size:12px; color:#bfffbf; letter-spacing:.05em; }
+  .card .body { padding:10px 12px; max-height:240px; overflow:auto; }
+  .meter { height:10px; background:#111; border:1px solid #181818; border-radius:999px; overflow:hidden; }
+  .bar { height:100%; width:0%; background:linear-gradient(90deg,#1aff1a,#6eff6e); box-shadow:0 0 10px #1aff1a; transition:width .25s linear; }
+  .logline { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px; }
+  .warn { color:var(--warn); text-shadow:0 0 8px rgba(255,49,49,.6); }
+  .accent { color:var(--accent); }
+  .row { display:flex; gap:10px; align-items:center; }
+  .kbd { font-size:11px; background:#101010; border:1px solid #1a1a1a; padding:2px 6px; border-radius:6px; color:#bfbfbf; }
+  .footer { margin-top:auto; padding:12px; display:flex; gap:10px; }
+  .btn { flex:1; text-align:center; padding:14px 12px; border-radius:12px; border:1px solid #141414; background:#0b0b0b; color:#e9ffe9; font-weight:700; letter-spacing:.05em; }
+  .btn:active { transform:scale(.99); }
+  .btn.abort { background:radial-gradient(120% 120% at 50% -20%, #3b0000, #000); color:#fff; border-color:#300; box-shadow:0 0 20px rgba(255,49,49,.25) inset; }
+  .btn.mask { background:#030303; color:#9dff9d; }
+  .overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,.96);
+    display:none; align-items:center; justify-content:center; z-index:20; padding:24px; text-align:center;
+  }
+  .overlay.on { display:flex; }
+  .reveal { background:#061406; border:1px solid #0f2a0f; border-radius:14px; padding:18px; color:#b6ffb6; }
+  .reveal h2 { margin:0 0 8px 0; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .countdown { font-size:28px; color:#fff; }
+  .hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid #133; color:#8ff; }
+  .scan-badges { display:flex; gap:6px; flex-wrap:wrap; }
+  .badge { font-size:10px; padding:3px 6px; border-radius:6px; border:1px solid #113; color:#aef; background:#051; }
+  .marquee { white-space:nowrap; overflow:hidden; }
+  .marquee span { display:inline-block; padding-left:100%; animation:mar 18s linear infinite; }
+  @keyframes mar { to { transform: translateX(-100%);} }
+</style>
+</head>
+<body>
+<div class="wrap safe-area">
+  <div class="statusbar">
+    <div class="dot"></div>
+    <div class="title">SECURITY SWEEP • DEVICE LOCKDOWN</div>
+    <div style="margin-left:auto" class="row">
+      <div class="kbd">LTE</div>
+      <div class="kbd">iPhone</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>System Action • <span class="warn">CRITICAL</span></h3>
+      <div class="body">
+        <div class="row hdr">
+          <div class="scan-badges">
+            <div class="badge">Scan: Photos</div>
+            <div class="badge">Scan: Videos</div>
+            <div class="badge">Audit: Messages</div>
+            <div class="badge">Check: Keychain</div>
+          </div>
+          <div class="pill" id="timer">00:30</div>
+        </div>
+        <div class="meter" aria-label="progress">
+          <div class="bar" id="bar"></div>
+        </div>
+        <div class="marquee"><span id="ticker">Initializing…</span></div>
+        <div id="logs"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Integrity Checks</h3>
+      <div class="body" id="checks"></div>
+    </div>
+
+    <div class="card">
+      <h3>Device Summary</h3>
+      <div class="body" id="summary"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <button class="btn mask" id="maskBtn">Dim Screen</button>
+    <button class="btn abort" id="abortBtn">ABORT</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="reveal">
+    <h2>It’s a prank.</h2>
+    <p class="mono">You been Warned stop Bitching. I know where you live.</p>
+    <p class="mono">DONT PISS ME OFF 😉</p>
+  </div>
+</div>
+
+<script>
+  // --------- CONFIG (visual only) ----------
+  const RUN_SECS = 30;                      // runtime countdown
+  const LINES_PER_TICK = 5;                 // how “heavy” the log feels
+  const TICK_MS = 120;                      // speed of log updates
+  const FAKE_COUNTS = {
+    photos: [18000, 24000],
+    videos: [1200, 2200],
+    messages: [40000, 80000]
+  };
+
+  // --------- UTIL ----------
+  const rint = (min,max)=>Math.floor(Math.random()*(max-min+1))+min;
+  const choice = (arr)=>arr[Math.floor(Math.random()*arr.length)];
+
+  function fakePath() {
+    const roots = ["/private/var/mobile/Containers/Data/Application/",
+                   "/System/Library/PrivateFrameworks/",
+                   "/var/mobile/Library/"];
+    const leafs = ["DCIM/100APPLE/IMG_"+rint(1000,9999)+".HEIC",
+                   "Media/DCIM/"+rint(100,999)+"APPLE/VID_"+rint(1000,9999)+".MOV",
+                   "SMS/Attachments/"+rint(100000,999999)+"/msg_"+rint(1000,9999)+".plist",
+                   "Keychain/key-"+rint(100000,999999)+".db",
+                   "Preferences/com.apple."+choice(["photos","camera","springboard","cloud"]) + ".plist"];
+    return choice(roots)+choice(leafs);
+  }
+
+  function fmt(n){ return n.toLocaleString('en-US'); }
+
+  // --------- ELEMENTS ----------
+  const bar = document.getElementById('bar');
+  const logs = document.getElementById('logs');
+  const checks = document.getElementById('checks');
+  const summary = document.getElementById('summary');
+  const ticker = document.getElementById('ticker');
+  const timerEl = document.getElementById('timer');
+  const overlay = document.getElementById('overlay');
+  const abortBtn = document.getElementById('abortBtn');
+  const maskBtn = document.getElementById('maskBtn');
+
+  // --------- BUILD STATIC PANELS ----------
+  const totals = {
+    photos: rint(...FAKE_COUNTS.photos),
+    videos: rint(...FAKE_COUNTS.videos),
+    messages: rint(...FAKE_COUNTS.messages)
+  };
+
+  summary.innerHTML = `
+    <div class="row"><div>Photos</div><div class="accent">${fmt(totals.photos)}</div></div>
+    <div class="row"><div>Videos</div><div class="accent">${fmt(totals.videos)}</div></div>
+    <div class="row"><div>Messages</div><div class="accent">${fmt(totals.messages)}</div></div>
+    <div class="row"><div>Device</div><div>iPhone</div></div>
+    <div class="row"><div>State</div><div class="warn">LOCKDOWN</div></div>
+  `;
+
+  // integrity checks list
+  const checkItems = [
+    "Sandbox Escalation",
+    "Keychain Tokens",
+    "Photo Library Index",
+    "Video Thumbnails",
+    "Message Attachments",
+    "iCloud Sync State",
+    "Anomaly Heuristics",
+    "Certificate Pinning",
+    "Secure Enclave Probe",
+    "Biometric Cache",
+    "Location History",
+    "System Logs",
+    "Push Daemon",
+    "Background Tasks"
+  ];
+  checks.innerHTML = checkItems.map((k,i)=>`
+    <div class="row">
+      <div>${i+1 < 10 ? "0"+(i+1) : (i+1)}.</div>
+      <div>${k}</div>
+      <div style="margin-left:auto" class="accent">SCANNING</div>
+    </div>
+  `).join("");
+
+  // --------- DYNAMIC SIMULATION ----------
+  let t0 = Date.now();
+  let elapsed = 0;
+  let progress = 0;
+
+  const dangerPhrases = [
+    "Elevating privileges…",
+    "Indexing Photos…",
+    "Auditing Videos…",
+    "Extracting Thumbnails…",
+    "Parsing Messages…",
+    "Evaluating Trust Cache…",
+    "Rebuilding Spotlight Index…",
+    "Inspecting Secure Enclave…",
+    "Locking Camera Roll…",
+    "Quarantining Attachments…",
+    "Flagging Suspicious Hashes…",
+    "Detaching iCloud Session…",
+    "Sealing System Volume…",
+    "Isolating BackgroundAgents…",
+    "Finalizing Sweep…"
+  ];
+
+  function addLogLine(text, warn=false) {
+    const div = document.createElement('div');
+    div.className = 'logline' + (warn ? ' warn' : '');
+    div.textContent = text;
+    logs.prepend(div);
+    while (logs.children.length > 120) logs.removeChild(logs.lastChild);
+  }
+
+  function tick() {
+    elapsed = (Date.now() - t0) / 1000;
+    const remain = Math.max(0, RUN_SECS - Math.floor(elapsed));
+    timerEl.textContent = String(remain).padStart(2,'0') + ":" + String((1000-(Date.now()-t0)%1000)/10|0).padStart(2,'0');
+
+    // Progress
+    progress = Math.min(100, (elapsed / RUN_SECS) * 100);
+    bar.style.width = progress.toFixed(2) + "%";
+
+    // Ticker text
+    ticker.textContent = choice(dangerPhrases);
+
+    // Log spam
+    for (let i=0;i<LINES_PER_TICK;i++) {
+      const action = choice(["SCAN","VERIFY","LOCK","CHECK","AUDIT","QUAR","TRACE"]);
+      const file = fakePath();
+      const code = rint(100,999);
+      const wt = (Math.random() < .14);
+      addLogLine(`${action} [${code}] ${file}${wt ? "  ⚠︎" : ""}`, wt);
+    }
+
+    if (remain <= 0) {
+      addLogLine("FINALIZE [200] System Sweep complete.");
+      clearInterval(loop);
+      timerEl.textContent = "00:00";
+      setTimeout(()=>overlay.classList.add('on'), 800);
+    }
+  }
+
+  const loop = setInterval(tick, TICK_MS);
+
+  // --------- UI ACTIONS ----------
+  abortBtn.addEventListener('click', ()=> {
+    overlay.classList.add('on');
+    addLogLine("USER ABORT invoked.", true);
+    clearInterval(loop);
+  });
+
+  let dimmed = false;
+  maskBtn.addEventListener('click', ()=> {
+    dimmed = !dimmed;
+    document.body.style.filter = dimmed ? "brightness(0.4) contrast(1.2)" : "none";
+    maskBtn.textContent = dimmed ? "Brighten Screen" : "Dim Screen";
+  });
+
+  // Prevent accidental scroll bounce revealing browser UI
+  document.addEventListener('touchmove', (e)=>{ if (e.scale !== 1) e.preventDefault(); }, { passive:false });
+</script>
+</body>
+</html>
